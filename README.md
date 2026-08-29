@@ -5,7 +5,7 @@ code here. The suite measures the *runner*, in two independent dimensions:
 
 | Suite | What it costs | What it measures |
 | --- | --- | --- |
-| **sleep tests** (100, unmarked) | ~102 s wall clock, ~0 CPU | scheduling, sharding, wall-clock distribution |
+| **sleep tests** (1600, unmarked) | ~1632 s wall clock, ~0 CPU | scheduling, sharding, wall-clock distribution |
 | **heavy tests** (60, `heavy` marker) | ~2 s warm, ~42 s in a fresh env | dependency install and per-worker import cost |
 
 ## Install
@@ -29,26 +29,31 @@ CPU-bound.
 
 ## The sleep tests
 
-100 tests across `tests/test_suite_01.py` … `tests/test_suite_10.py`, each
+1600 tests across `tests/test_suite_001.py` … `tests/test_suite_160.py`, each
 holding `test_case_01` … `test_case_10`. Every body is a bare `time.sleep()`.
-All ten tests in a file sleep the same amount; the amount climbs file to file:
+All ten tests in a file sleep the same amount, and the files cycle through ten
+duration tiers, 16 files per tier:
 
-| File | Sleep per test | File total |
-| --- | --- | --- |
-| `test_suite_01.py` | 0.1s | 1.0s |
-| `test_suite_02.py` | 0.3s | 3.0s |
-| `test_suite_03.py` | 0.5s | 5.0s |
-| `test_suite_04.py` | 0.7s | 7.0s |
-| `test_suite_05.py` | 0.9s | 9.0s |
-| `test_suite_06.py` | 1.1s | 11.0s |
-| `test_suite_07.py` | 1.3s | 13.0s |
-| `test_suite_08.py` | 1.5s | 15.0s |
-| `test_suite_09.py` | 1.8s | 18.0s |
-| `test_suite_10.py` | 2.0s | 20.0s |
+| Tier | Sleep per test | Files | Tier total |
+| --- | --- | --- | --- |
+| 1 | 0.1s | 16 | 16s |
+| 2 | 0.3s | 16 | 48s |
+| 3 | 0.5s | 16 | 80s |
+| 4 | 0.7s | 16 | 112s |
+| 5 | 0.9s | 16 | 144s |
+| 6 | 1.1s | 16 | 176s |
+| 7 | 1.3s | 16 | 208s |
+| 8 | 1.5s | 16 | 240s |
+| 9 | 1.8s | 16 | 288s |
+| 10 | 2.0s | 16 | 320s |
 
-Serial total: **~102 s**. The durations are deliberately uneven, so an even
-split of files or tests across workers does *not* produce an even split of
+Serial total: **~1632 s (27 min)**. The durations are deliberately uneven, so an
+even split of files or tests across workers does *not* produce an even split of
 wall-clock time — the point, if you are testing shard balancing.
+
+The longest single test is **2.0s**, and that is a hard floor on any shard that
+holds one: no amount of extra workers takes a run below it. With 1600 tests the
+floor only binds past ~800 workers, where `total / N` finally drops under 2.0s.
 
 ## The heavy tests
 

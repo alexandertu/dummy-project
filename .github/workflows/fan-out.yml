@@ -4,8 +4,9 @@
 # Two things make this awkward, and both are handled below:
 #   1. This repository is public and the one holding the CLI is private, so the
 #      checkout needs a token. See the "Check the PAT" step.
-#   2. fan-test hardcodes its endpoint and prints the HTTP status without
-#      failing on it, so a rejected dispatch would otherwise look green.
+#   2. The suite's own dependencies are never installed here. --collect static
+#      parses the sources instead of importing them, so all 160 tests enumerate
+#      from a checkout alone - no pytest, no numpy, nothing.
 #
 # Manual trigger only, deliberately: the endpoint is an ngrok tunnel to a
 # machine that is not always up, and a push trigger would paint the repository
@@ -24,7 +25,7 @@ on:
 jobs:
   fan-out:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
 
     steps:
       - uses: actions/checkout@v4
@@ -63,18 +64,6 @@ jobs:
           token: ${{ secrets.FAN_TEST_PAT }}
           persist-credentials: false
 
-      # Only pytest, not the suite's own dependencies. fan-test shells out to
-      # pytest purely to enumerate node IDs, and it finds that pytest on our
-      # interpreter - so the two installs must share one environment.
-      #
-      # The trade-off: pytest imports a module to enumerate it, so without the
-      # heavy libraries those twelve files cannot be listed. tests/heavy/conftest.py
-      # skips them when the libraries are absent, which keeps collection clean
-      # (exit 0) but means only the 100 sleep tests are dispatched here. Install
-      # requirements.txt instead if the workers need the full 160.
-      - name: Install pytest
-        run: pip install --no-cache-dir pytest
-
       - name: Install fan-test
         run: pip install --no-cache-dir ./.fan-test-src/fan-test
 
@@ -85,32 +74,34 @@ jobs:
           fan-test --help
           fan-test run --help
 
+      # --collect static parses the sources rather than importing them, so the
+      # heavy tests enumerate here without numpy or pandas installed - all 160,
+      # where pytest collection in a bare environment could only see 100.
+      #
+      # --wait blocks until the run reaches a terminal status and exits with the
+      # verdict: 0 passed, 1 tests failed, 2 errored or timed out server-side,
+      # 3 gave up waiting, 4 never dispatched. That is the whole check - no
+      # parsing of printed status codes.
       - name: Collect and dispatch
         run: |
           set -o pipefail
-          if ! out=$(fan-test run --workers "${{ inputs.workers }}" 2>&1); then
-            printf '%s\n' "$out"
-            echo "::error title=Dispatch failed::fan-test could not reach the runner endpoint." >&2
-            exit 1
-          fi
-          printf '%s\n' "$out"
+          fan-test run \
+            --collect static \
+            --workers "${{ inputs.workers }}" \
+            --wait \
+            --timeout 900 \
+            --show failed \
+            | tee "$RUNNER_TEMP/fan-test.log"
 
-          # fan-test prints "POST <url> -> <status>" and exits 0 whatever the
-          # status is, so a 4xx/5xx would pass silently. Check it here.
-          http_status=$(printf '%s\n' "$out" | sed -n 's/.*-> \([0-9][0-9][0-9]\)[[:space:]]*$/\1/p' | tail -1)
-          collected=$(printf '%s\n' "$out" | sed -n 's/^\([0-9]\{1,\}\) tests collected$/\1/p' | tail -1)
-
+      - name: Summarise the run
+        if: always()
+        run: |
+          log="$RUNNER_TEMP/fan-test.log"
+          [ -f "$log" ] || exit 0
           {
             echo "### fan-test"
             echo ""
-            echo "- Source: \`alexandertu/modal-run-tests@main\`"
-            echo "- Collected: **${collected:-unknown}** tests"
-            echo "- Workers requested: **${{ inputs.workers }}**"
-            echo "- Runner response: **${http_status:-none}**"
+            echo '```'
+            cat "$log"
+            echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-
-          case "$http_status" in
-            2??) echo "Runner accepted the dispatch ($http_status)." ;;
-            "")  echo "::error title=No response parsed::Could not read a status code from fan-test's output." >&2; exit 1 ;;
-            *)   echo "::error title=Runner rejected the dispatch::Endpoint returned $http_status. Check the URL hardcoded in fan_test/cli.py matches a real route." >&2; exit 1 ;;
-          esac

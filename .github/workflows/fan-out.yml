@@ -73,10 +73,12 @@ jobs:
       - name: Install fan-test
         run: pip install --no-cache-dir ./.fan-test-src/fan-test
 
+      # `run --help` loads the subcommand without dispatching, which is as far
+      # as we can check without a reachable endpoint.
       - name: Verify the CLI
         run: |
           fan-test --help
-          fan-test ping --name ci
+          fan-test run --help
 
       - name: Collect and dispatch
         run: |

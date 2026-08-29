@@ -1,0 +1,15 @@
+[project]
+name = "dummy-project"
+version = "0.1.0"
+description = "A synthetic pytest suite for measuring test-runner cost: sleep-only timing tests plus import-heavy dependency tests"
+readme = "README.md"
+requires-python = ">=3.12"
+
+# Dependencies live in requirements.txt and are installed with pip, not uv:
+# a slow, serial install is the point. See README.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "heavy: imports a real third-party library (exclude with -m 'not heavy')",
+]

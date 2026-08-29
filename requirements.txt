@@ -1,0 +1,19 @@
+# Deliberately heavy: this project exists to make environment build time and
+# per-worker import time measurable, not to use these libraries for anything.
+# Installed with pip (not uv) because pip resolves and downloads serially,
+# which is the slower, more representative cold-start cost.
+
+numpy
+scipy
+pandas
+scikit-learn
+matplotlib
+pillow
+pyarrow
+polars
+duckdb
+networkx
+sympy
+statsmodels
+
+pytest

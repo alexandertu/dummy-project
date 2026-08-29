@@ -63,12 +63,17 @@ jobs:
           token: ${{ secrets.FAN_TEST_PAT }}
           persist-credentials: false
 
-      # Both go into the same interpreter on purpose. fan-test shells out to
-      # pytest to enumerate the suite, and that pytest has to be able to import
-      # numpy, pandas and the rest, because the heavy tests import at module
-      # level. Split them across environments and collection fails.
-      - name: Install the suite's dependencies
-        run: pip install --no-cache-dir -r requirements.txt
+      # Only pytest, not the suite's own dependencies. fan-test shells out to
+      # pytest purely to enumerate node IDs, and it finds that pytest on our
+      # interpreter - so the two installs must share one environment.
+      #
+      # The trade-off: pytest imports a module to enumerate it, so without the
+      # heavy libraries those twelve files cannot be listed. tests/heavy/conftest.py
+      # skips them when the libraries are absent, which keeps collection clean
+      # (exit 0) but means only the 100 sleep tests are dispatched here. Install
+      # requirements.txt instead if the workers need the full 160.
+      - name: Install pytest
+        run: pip install --no-cache-dir pytest
 
       - name: Install fan-test
         run: pip install --no-cache-dir ./.fan-test-src/fan-test

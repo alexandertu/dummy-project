@@ -20,7 +20,7 @@ on:
       workers:
         description: How many workers to spread the suite across
         type: number
-        default: 4
+        default: 16
 
 jobs:
   fan-out:

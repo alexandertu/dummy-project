@@ -1,0 +1,109 @@
+# Installs the fan-test CLI, which lives in the private alexandertu/modal-run-tests
+# repository, and dispatches this suite through it.
+#
+# Two things make this awkward, and both are handled below:
+#   1. This repository is public and the one holding the CLI is private, so the
+#      checkout needs a token. See the "Check the PAT" step.
+#   2. fan-test hardcodes its endpoint and prints the HTTP status without
+#      failing on it, so a rejected dispatch would otherwise look green.
+#
+# Manual trigger only, deliberately: the endpoint is an ngrok tunnel to a
+# machine that is not always up, and a push trigger would paint the repository
+# red every time the tunnel is down.
+
+name: fan-out
+
+on:
+  workflow_dispatch:
+    inputs:
+      workers:
+        description: How many workers to spread the suite across
+        type: number
+        default: 4
+
+jobs:
+  fan-out:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+
+      - name: Check the PAT is present
+        env:
+          PAT: ${{ secrets.FAN_TEST_PAT }}
+        run: |
+          if [ -n "$PAT" ]; then
+            echo "FAN_TEST_PAT is set."
+            exit 0
+          fi
+          {
+            echo "::error title=FAN_TEST_PAT missing::This workflow needs a token that can read the private alexandertu/modal-run-tests repository."
+            echo "Create a fine-grained personal access token:"
+            echo "  Resource owner:         alexandertu"
+            echo "  Repository access:      Only select repositories -> alexandertu/modal-run-tests"
+            echo "  Repository permissions: Contents -> Read-only"
+            echo "Then add it here as a repository secret named FAN_TEST_PAT:"
+            echo "  Settings -> Secrets and variables -> Actions -> New repository secret"
+          } >&2
+          exit 1
+
+      # Only fan-test/ is pulled, not the whole application repo.
+      - name: Check out fan-test
+        uses: actions/checkout@v4
+        with:
+          repository: alexandertu/modal-run-tests
+          ref: main
+          path: .fan-test-src
+          sparse-checkout: fan-test
+          token: ${{ secrets.FAN_TEST_PAT }}
+          persist-credentials: false
+
+      # Both go into the same interpreter on purpose. fan-test shells out to
+      # pytest to enumerate the suite, and that pytest has to be able to import
+      # numpy, pandas and the rest, because the heavy tests import at module
+      # level. Split them across environments and collection fails.
+      - name: Install the suite's dependencies
+        run: pip install --no-cache-dir -r requirements.txt
+
+      - name: Install fan-test
+        run: pip install --no-cache-dir ./.fan-test-src/fan-test
+
+      - name: Verify the CLI
+        run: |
+          fan-test --help
+          fan-test ping --name ci
+
+      - name: Collect and dispatch
+        run: |
+          set -o pipefail
+          if ! out=$(fan-test run --workers "${{ inputs.workers }}" 2>&1); then
+            printf '%s\n' "$out"
+            echo "::error title=Dispatch failed::fan-test could not reach the runner endpoint." >&2
+            exit 1
+          fi
+          printf '%s\n' "$out"
+
+          # fan-test prints "POST <url> -> <status>" and exits 0 whatever the
+          # status is, so a 4xx/5xx would pass silently. Check it here.
+          http_status=$(printf '%s\n' "$out" | sed -n 's/.*-> \([0-9][0-9][0-9]\)[[:space:]]*$/\1/p' | tail -1)
+          collected=$(printf '%s\n' "$out" | sed -n 's/^\([0-9]\{1,\}\) tests collected$/\1/p' | tail -1)
+
+          {
+            echo "### fan-test"
+            echo ""
+            echo "- Source: \`alexandertu/modal-run-tests@main\`"
+            echo "- Collected: **${collected:-unknown}** tests"
+            echo "- Workers requested: **${{ inputs.workers }}**"
+            echo "- Runner response: **${http_status:-none}**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          case "$http_status" in
+            2??) echo "Runner accepted the dispatch ($http_status)." ;;
+            "")  echo "::error title=No response parsed::Could not read a status code from fan-test's output." >&2; exit 1 ;;
+            *)   echo "::error title=Runner rejected the dispatch::Endpoint returned $http_status. Check the URL hardcoded in fan_test/cli.py matches a real route." >&2; exit 1 ;;
+          esac

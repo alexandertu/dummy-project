@@ -73,7 +73,7 @@ jobs:
           sleep_n, sleep_s = split(lambda f: not f.startswith("tests.heavy"))
           heavy_n, heavy_s = split(lambda f: f.startswith("tests.heavy"))
           if sleep_n and heavy_n:
-              print(f"- Sleep suite: {sleep_n} tests, {sleep_s:.2f}s \u00b7 "
+              print(f"- CPU suite: {sleep_n} tests, {sleep_s:.2f}s \u00b7 "
                     f"Heavy suite: {heavy_n} tests, {heavy_s:.2f}s")
           print()
 

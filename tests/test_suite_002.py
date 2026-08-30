@@ -1,45 +1,45 @@
-"""Suite 002: 10 tests, each sleeping 0.3s (~3.0s for the file)."""
+"""Suite 002: 10 tests, each burning ~0.3s of CPU on the reference machine."""
 
-import time
+from _workload import burn
 
-SLEEP_SECONDS = 0.3
+ITERATIONS = 5250000
 
 
 def test_case_01() -> None:
-    time.sleep(SLEEP_SECONDS)
+    assert burn(ITERATIONS) >= 0
 
 
 def test_case_02() -> None:
-    time.sleep(SLEEP_SECONDS)
+    assert burn(ITERATIONS) >= 0
 
 
 def test_case_03() -> None:
-    time.sleep(SLEEP_SECONDS)
+    assert burn(ITERATIONS) >= 0
 
 
 def test_case_04() -> None:
-    time.sleep(SLEEP_SECONDS)
+    assert burn(ITERATIONS) >= 0
 
 
 def test_case_05() -> None:
-    time.sleep(SLEEP_SECONDS)
+    assert burn(ITERATIONS) >= 0
 
 
 def test_case_06() -> None:
-    time.sleep(SLEEP_SECONDS)
+    assert burn(ITERATIONS) >= 0
 
 
 def test_case_07() -> None:
-    time.sleep(SLEEP_SECONDS)
+    assert burn(ITERATIONS) >= 0
 
 
 def test_case_08() -> None:
-    time.sleep(SLEEP_SECONDS)
+    assert burn(ITERATIONS) >= 0
 
 
 def test_case_09() -> None:
-    time.sleep(SLEEP_SECONDS)
+    assert burn(ITERATIONS) >= 0
 
 
 def test_case_10() -> None:
-    time.sleep(SLEEP_SECONDS)
+    assert burn(ITERATIONS) >= 0

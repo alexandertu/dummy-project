@@ -5,7 +5,7 @@ code here. The suite measures the *runner*, in two independent dimensions:
 
 | Suite | What it costs | What it measures |
 | --- | --- | --- |
-| **sleep tests** (1600, unmarked) | ~1632 s wall clock, ~0 CPU | scheduling, sharding, wall-clock distribution |
+| **CPU tests** (1600, unmarked) | ~1632 CPU-seconds | sharding, and the core ceiling on in-process parallelism |
 | **heavy tests** (60, `heavy` marker) | ~2 s warm, ~42 s in a fresh env | dependency install and per-worker import cost |
 
 ## Install
@@ -27,14 +27,26 @@ Measured on one machine, one fast connection: **21 s**, 34 packages, **886 MB**
 on disk. Expect that to move a lot with link speed — it is download-bound, not
 CPU-bound.
 
-## The sleep tests
+## The CPU tests
 
 1600 tests across `tests/test_suite_001.py` … `tests/test_suite_160.py`, each
-holding `test_case_01` … `test_case_10`. Every body is a bare `time.sleep()`.
-All ten tests in a file sleep the same amount, and the files cycle through ten
-duration tiers, 16 files per tier:
+holding `test_case_01` … `test_case_10`. Every body calls `burn()` from
+`tests/_workload.py`: a pure-Python arithmetic loop that occupies a core.
 
-| Tier | Sleep per test | Files | Tier total |
+**They burn CPU rather than sleeping, and that is the point.** An earlier
+version slept. That measured scheduling honestly enough, but it could not tell
+two kinds of parallelism apart — `time.sleep()` uses no CPU, so `pytest -n 50`
+on a 4-core runner overlaps fifty sleeping processes happily and looked nearly
+as fast as fifty remote sandboxes. Work that occupies a core does not overlap:
+`-n` saturates at the machine's core count however high you set it, while a
+distributed runner keeps scaling because every shard gets its own machine.
+
+Work is expressed in **iterations, not seconds**, because a fixed duration would
+mean different amounts of work on different hardware — and comparing hardware is
+the whole exercise. The tiers below are calibrated to the reference machine at
+~17.5M iterations/s; a slower runner takes proportionally longer.
+
+| Tier | CPU per test (reference) | Files | Tier total |
 | --- | --- | --- | --- |
 | 1 | 0.1s | 16 | 16s |
 | 2 | 0.3s | 16 | 48s |
@@ -47,13 +59,11 @@ duration tiers, 16 files per tier:
 | 9 | 1.8s | 16 | 288s |
 | 10 | 2.0s | 16 | 320s |
 
-Serial total: **~1632 s (27 min)**. The durations are deliberately uneven, so an
-even split of files or tests across workers does *not* produce an even split of
-wall-clock time — the point, if you are testing shard balancing.
+Serial total: **~1632 CPU-seconds** on the reference machine — 27 minutes of one
+core. The tiers are deliberately uneven, so an even split of files or tests
+across workers does *not* produce an even split of time.
 
-The longest single test is **2.0s**, and that is a hard floor on any shard that
-holds one: no amount of extra workers takes a run below it. With 1600 tests the
-floor only binds past ~800 workers, where `total / N` finally drops under 2.0s.
+The longest single test is ~2.0s of CPU, a hard floor on any shard holding one.
 
 ## The heavy tests
 
@@ -78,18 +88,18 @@ The compute is trivial. The cost is getting the libraries into memory:
 
 ```sh
 ./.venv/bin/python -m pytest                    # everything: ~104 s
-./.venv/bin/python -m pytest -m "not heavy"     # sleep baseline only: ~102 s
+./.venv/bin/python -m pytest -m "not heavy"     # CPU tests only
 ./.venv/bin/python -m pytest -m heavy           # dependency tests only: ~2 s warm
 ```
 
-Every test passes. The sleep tests assert nothing; the heavy tests assert real
-properties of real libraries.
+Every test passes. The CPU tests assert only that the workload ran; the heavy
+tests assert real properties of real libraries.
 
 ## CI
 
 `.github/workflows/tests.yml` runs the full suite on every push and pull
 request, on `ubuntu-latest` and the Python in `.python-version`. It writes a
-job summary with the cold install time, the sleep/heavy split and per-file
+job summary with the cold install time, the CPU/heavy split and per-file
 totals, and uploads the JUnit XML as a build artifact.
 
 It deliberately does **not** cache pip. Caching would make CI faster and hide

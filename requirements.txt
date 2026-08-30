@@ -17,3 +17,8 @@ sympy
 statsmodels
 
 pytest
+
+# -n auto in the tests workflow. A single-process run of this suite does not
+# finish inside the job's own timeout, and a serial baseline nobody would
+# actually use is not a baseline worth measuring against.
+pytest-xdist

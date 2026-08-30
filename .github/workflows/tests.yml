@@ -28,8 +28,12 @@ jobs:
           pip install --no-cache-dir -r requirements.txt
           echo "INSTALL_SECONDS=$(( $(date +%s) - start ))" >> "$GITHUB_ENV"
 
+      # -n auto: one worker per core the runner actually has. Serially this
+      # suite runs past the job's 20-minute timeout, so the honest comparison
+      # is against a runner using the parallelism available to it, not against
+      # one deliberately left single-process.
       - name: Run pytest
-        run: python -m pytest -q --junit-xml=report.xml
+        run: python -m pytest -q -n auto --junit-xml=report.xml
 
       - name: Summarise timings
         if: always()

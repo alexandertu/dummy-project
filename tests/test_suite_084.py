@@ -1,8 +1,8 @@
-"""Suite 084: 10 tests, each burning ~0.7s of CPU on the reference machine."""
+"""Suite 084: 10 tests, each burning ~0.35s of CPU on the reference machine."""
 
 from _workload import burn
 
-ITERATIONS = 12250000
+ITERATIONS = 6125000
 
 
 def test_case_01() -> None:

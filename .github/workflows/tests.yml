@@ -4,11 +4,22 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      workers:
+        description: >-
+          pytest workers. "auto" is one per core; "1" is the serial baseline,
+          which is the honest starting point but takes roughly twice as long.
+        type: string
+        default: auto
 
 jobs:
   pytest:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Generous enough for the serial baseline to actually finish. A cap that
+    # cancels the run measures the cap, not the suite - the first attempts at
+    # this were killed at 1216s with pytest still going, which told us nothing
+    # except that 20 minutes was too few.
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -33,7 +44,9 @@ jobs:
       # is against a runner using the parallelism available to it, not against
       # one deliberately left single-process.
       - name: Run pytest
-        run: python -m pytest -q -n auto --junit-xml=report.xml
+        env:
+          WORKERS: ${{ inputs.workers || 'auto' }}
+        run: python -m pytest -q -n "$WORKERS" --junit-xml=report.xml
 
       - name: Summarise timings
         if: always()
